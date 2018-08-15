@@ -121,12 +121,13 @@ void rga_analysis::Loop()
             auto px = REC_Particle_px->at(vecEntry);
             auto py = REC_Particle_py->at(vecEntry);
             auto pz = REC_Particle_pz->at(vecEntry);
+            TVector3 Mom3Vector(px,py,pz);
             
             auto beta= REC_Particle_beta->at(vecEntry);
-            h_beta_vs_mom->Fill(sqrt(px*px+py*py+pz*pz),beta);
+            h_beta_vs_mom->Fill(Mom3Vector.Mag(),beta);
             
             if(PID == 11){
-                TVector3 elecMom3Vector(px,py,pz);
+                TVector3 elecMom3Vector(Mom3Vector);
                 h_rec_momen_elec->Fill(elecMom3Vector.Mag());
                 h_rec_theta_elec->Fill(elecMom3Vector.Theta()*TMath::RadToDeg());
                 h_rec_phi_elec->Fill(elecMom3Vector.Phi()*TMath::RadToDeg());
@@ -138,7 +139,7 @@ void rga_analysis::Loop()
                     h_elec_sampl_frac->Fill(calorimeter_energy/elecMom3Vector.Mag());
                 }
             } else if(PID== -11){
-                TVector3 posMom3Vector(px,py,pz);
+                TVector3 posMom3Vector(Mom3Vector);
                 h_rec_momen_posit->Fill(posMom3Vector.Mag());
                 h_rec_theta_posit->Fill(posMom3Vector.Theta()*TMath::RadToDeg());
                 h_rec_phi_posit->Fill(posMom3Vector.Phi()*TMath::RadToDeg());
@@ -150,13 +151,13 @@ void rga_analysis::Loop()
                     h_posit_sampl_frac->Fill(calorimeter_energy/posMom3Vector.Mag());
                 }
             }else if(PID== 2212){
-                TVector3 protMom3Vector(px,py,pz);
+                TVector3 protMom3Vector(Mom3Vector);
                 h_rec_momen_proton->Fill(protMom3Vector.Mag());
                 h_rec_theta_proton->Fill(protMom3Vector.Theta()*TMath::RadToDeg());
                 h_rec_phi_proton->Fill(protMom3Vector.Phi()*TMath::RadToDeg());
                 //TLorentzVector protMom4Vector(protMom3Vector,sqrt(protMom3Vector.Mag2()+0.938*0.938));
             }else if(PID== 22){
-                TVector3 photMom3Vector(px,py,pz);
+                TVector3 photMom3Vector(Mom3Vector);
                 
                 //TLorentzVector photMom4Vector(photMom3Vector,sqrt(photMom3Vector.Mag2()));
             }else{
@@ -210,7 +211,7 @@ void rga_analysis::Loop()
 
 
 //----------------------------------------
-//   Declaration of function
+//   Declaration of functions
 //----------------------------------------
 
 //function definition for the mapping (link different REC_branches)
@@ -238,13 +239,4 @@ double cal_energy(vector<double>* cal_ener_branch,vectorMap Cmap,int keyval){
         }
     }
     return energy;
-}
-
-//function for the Lorentzvector
-TVector3 Mom3Vector(vector<double>* branch1,vector<double>* branch2,vector<double>* branch3, int position){
-    TVector3 v1;
-    v1.SetX(branch1->at(position));
-    v1.SetY(branch2->at(position));
-    v1.SetZ(branch3->at(position));
-    return v1;
 }
