@@ -36,21 +36,80 @@
 #include <cmath>
 #include <TGraphErrors.h>
 #include "TLegend.h"
-#include <map>
+//#include <map>
+#include <unordered_map>
+#include <float.h>
 
+using namespace std;
+
+typedef unordered_map<int,vector<int>> vectorMap;
+typedef hipo::node<float> hipoF;
+typedef hipo::node<int16_t> hipo16;
+typedef hipo::node<int8_t> hipo8;
+
+
+//----------- Functions -----------------------
+vectorMap loadMapIndex(hipo16* branch_pindex);
+void Calorimeter_bank(hipoF* cal_ener_branch,hipo8* cal_layer_branch,hipoF* cal_lu_branch,hipoF* cal_lv_branch,hipoF* cal_lw_branch,hipoF* cal_X_branch,hipoF* cal_Y_branch,hipoF* cal_Z_branch, vectorMap Cmap,int keyval,vector<float> &Cal_energy, vector<float> &lu, vector<float> &lv, vector<float> &lw, vector<float> &Xcal,vector<float> &Ycal,vector<float> &Zcal);
+//---------------------------------------------
+
+//#################  main program   ###################
+//#####################################################
 int main(int argc, char** argv) {
    std::cout << " reading file example program (HIPO) " << std::endl;
    char inputFile[256];
+    
+    TCanvas *c2 = new TCanvas("c2","c2",2500,2500);
+    
+    gStyle->SetTitleAlign(23);
+    gStyle->SetLineWidth(2);
+    gStyle->SetHistLineWidth(2);
+    gStyle->SetTitleXOffset(0.98);
+    gStyle->SetTitleYOffset(1.3);
+    gStyle->SetTitleSize(0.04,"X");
+    gStyle->SetTitleSize(0.04,"Y");
+    gStyle->SetLabelSize(0.04,"X");
+    gStyle->SetLabelSize(0.04,"Y");
+    gPad->SetLeftMargin(0.16);
+    gPad->SetRightMargin(0.16);
+    //gROOT->ForceStyle(true);
+    
+    // defining histograms
+    TH1D *h_rec_lu_neg=new TH1D("h_rec_lu_neg","REC.lu.neg.particle",100,0.0,0.0);
+    TH1D *h_rec_lv_neg=new TH1D("h_rec_lv_neg","REC.lv.neg.particle",100,0.0,0.0);
+    TH1D *h_rec_lw_neg=new TH1D("h_rec_lw_neg","REC.lw.neg.particle",100,0.0,0.0);
+    TH1D *h_rec_lu_pos=new TH1D("h_rec_lu_pos","REC.lu.pos.particle",100,0.0,0.0);
+    TH1D *h_rec_lv_pos=new TH1D("h_rec_lv_pos","REC.lv.pos.particle",100,0.0,0.0);
+    TH1D *h_rec_lw_pos=new TH1D("h_rec_lw_pos","REC.lw.pos.particle",100,0.0,0.0);
 
-   if(argc>1) {
-      sprintf(inputFile,"%s",argv[1]);
-   } else {
-      std::cout << " *** please provide a file name..." << std::endl;
-     exit(0);
-   }
+   //if(argc>1) {
+      //sprintf(inputFile,"%s",argv[1]);
+   //} else {
+      //std::cout << " *** please provide a file name..." << std::endl;
+     //exit(0);
+   //}
+    if(argc<2){
+        cout << " *** please provide a file name..." << std::endl;
+        exit(0);
+    } else{
+        auto n_argc=argc;
+        for(int n_argv=1; n_argv<n_argc;++n_argv){
+            sprintf(inputFile,"%s",argv[n_argv]);
+    
 
    hipo::reader  reader;
    reader.open(inputFile);
+    
+    
+    //TCanvas *c2 = new TCanvas("c2","c2",2500,2500);
+    
+    // defining histograms
+    //TH1D *h_rec_lu_neg=new TH1D("h_rec_lu_neg","REC.lu.neg.particle",100,0.0,0.0);
+    //TH1D *h_rec_lv_neg=new TH1D("h_rec_lv_neg","REC.lv.neg.particle",100,0.0,0.0);
+    //TH1D *h_rec_lw_neg=new TH1D("h_rec_lw_neg","REC.lw.neg.particle",100,0.0,0.0);
+    //TH1D *h_rec_lu_pos=new TH1D("h_rec_lu_pos","REC.lu.pos.particle",100,0.0,0.0);
+    //TH1D *h_rec_lv_pos=new TH1D("h_rec_lv_pos","REC.lv.pos.particle",100,0.0,0.0);
+    //TH1D *h_rec_lw_pos=new TH1D("h_rec_lw_pos","REC.lw.pos.particle",100,0.0,0.0);
 
     /*
    hipo::node<int32_t>         *BMT__adc_ADC = reader.getBranch<int32_t>("BMT::adc","ADC");
@@ -1499,21 +1558,165 @@ int main(int argc, char** argv) {
    //--  Main LOOP running through events and printing
    //--  values of the first decalred branch
    //----------------------------------------------------
+    
    int entry = 0;
-	TCanvas *c1 = new TCanvas("c1","c1");
-	TH1D *h_rec_charge = new TH1D("h_rec_charge","rec_charge",4,-2,2);
+    
    while(reader.next()==true){
       entry++;
       int n_particles=REC__Particle_charge->getLength();
+       
+       //-----------------------------------------------------
+       //------load map for each entry/event for pindex-------
+       vectorMap calomap = loadMapIndex(REC__Calorimeter_pindex);
+       //-----------------------------------------------------
       
-      for(int b = 0; b < n_particles; b++){
-         h_rec_charge->Fill(REC__Particle_charge->getValue(b));
+      for(int vecEntry = 0; vecEntry < n_particles; ++vecEntry){
+          
+          
+          auto PID = REC__Particle_pid->getValue(vecEntry);
+          auto beta= REC__Particle_beta->getValue(vecEntry);
+          auto particle_charge= REC__Particle_charge->getValue(vecEntry);
+          auto px = REC__Particle_px->getValue(vecEntry);
+          auto py = REC__Particle_py->getValue(vecEntry);
+          auto pz = REC__Particle_pz->getValue(vecEntry);
+          auto chi2 = REC__Particle_chi2pid->getValue(vecEntry);
+          TVector3 Mom3Vector(px,py,pz);
+          auto rec_momentum = Mom3Vector.Mag();
+          
+          
+          //------------------------------------------------------
+          //-------- Looking the calorimeter map -----------------
+          vector<float> Cal_energy; vector<float> lu; vector<float> lv; vector<float> lw; vector<float> Xcal; vector<float> Ycal; vector<float> Zcal;
+          Cal_energy.clear(); lu.clear(); lv.clear(); lw.clear(); Xcal.clear(); Ycal.clear(); Zcal.clear();
+          //Implementation of Calorimeter bank function
+          Calorimeter_bank(REC__Calorimeter_energy,REC__Calorimeter_layer,REC__Calorimeter_lu,REC__Calorimeter_lv,REC__Calorimeter_lw,REC__Calorimeter_x,REC__Calorimeter_y,REC__Calorimeter_z,calomap,vecEntry, Cal_energy,lu,lv,lw,Xcal,Ycal,Zcal);
+          //------------------------------------------------------
+          
+          // Calorimeter plots
+          auto Cal_total_energy=0.0;
+          if(calomap.find(vecEntry)!=calomap.end()){
+              for(int jj=0; jj<Cal_energy.size();++jj){
+                  auto lu_value= lu.at(jj);
+                  auto lv_value= lv.at(jj);
+                  auto lw_value= lw.at(jj);
+                  auto cal_x_position=Xcal.at(jj);
+                  auto cal_y_position=Ycal.at(jj);
+                  Cal_total_energy=Cal_total_energy+Cal_energy.at(jj);
+                  
+                  if(particle_charge==-1){
+                      h_rec_lu_neg->Fill(lu_value);
+                      h_rec_lv_neg->Fill(lv_value);
+                      h_rec_lw_neg->Fill(lw_value);
+                      //h_rec_pcalXY_neg_particle->Fill(cal_x_position,cal_y_position);
+                      //if(jj==2){
+                          //auto PCal_energy=Cal_energy.at(0);
+                          //auto ECin_energy=Cal_energy.at(1);
+                          //auto ECout_energy=Cal_energy.at(2);
+                          //h_ECin_vs_ECout_neg_particle->Fill(Cal_energy.at(1),Cal_energy.at(2));
+                          //h_ECal_vs_Pcal_neg_particle->Fill(Cal_energy.at(1)+Cal_energy.at(2),Cal_energy.at(0));
+                      //}
+                  }else if(particle_charge==1){
+                      h_rec_lu_pos->Fill(lu_value);
+                      h_rec_lv_pos->Fill(lv_value);
+                      h_rec_lw_pos->Fill(lw_value);
+                      //h_rec_pcalXY_pos_particle->Fill(cal_x_position,cal_y_position);
+                      //if(jj==2){
+                          //h_ECin_vs_ECout_pos_particle->Fill(Cal_energy.at(1),Cal_energy.at(2));
+                          //h_ECal_vs_Pcal_pos_particle->Fill(Cal_energy.at(1)+Cal_energy.at(2),Cal_energy.at(0));
+                      //}
+                  }
+              }
+          }
+          
        }
    }
-	c1->cd();
-	h_rec_charge->Draw();
-	c1->Print("figs/rec_particle_charge.png");
+        }
+    }
+       
+    c2->Divide(3,2);
+    c2->cd(1);
+    h_rec_lu_neg->Draw();
+    h_rec_lu_neg->SetXTitle("lu");
+    h_rec_lu_neg->SetYTitle("counts");
+    c2->cd(2);
+    h_rec_lv_neg->Draw();
+    h_rec_lv_neg->SetXTitle("lv");
+    h_rec_lv_neg->SetYTitle("counts");
+    c2->cd(3);
+    h_rec_lw_neg->Draw();
+    h_rec_lw_neg->SetXTitle("lw");
+    h_rec_lw_neg->SetYTitle("counts");
+    c2->cd(4);
+    h_rec_lu_pos->Draw();
+    h_rec_lu_pos->SetXTitle("lu");
+    h_rec_lu_pos->SetYTitle("counts");
+    c2->cd(5);
+    h_rec_lv_pos->Draw();
+    h_rec_lv_pos->SetXTitle("lv");
+    h_rec_lv_pos->SetYTitle("counts");
+    c2->cd(6);
+    h_rec_lw_pos->Draw();
+    h_rec_lw_pos->SetXTitle("lw");
+    h_rec_lw_pos->SetYTitle("counts");
+    c2->Print("figs/lu_lv_lw.png");
    //----------------------------------------------------
+    
 }
 //###### ENF OF GENERATED FILE #######
+
+
+//----------------------------------------
+//   Declaration of functions
+//----------------------------------------
+
+//function definition for the mapping (link different REC_branches)
+vectorMap loadMapIndex(hipo16* branch_pindex){
+    vectorMap idxmap;
+    idxmap.clear();
+    if(branch_pindex!=NULL){
+        for(int vecEntryPos=0; vecEntryPos<branch_pindex->getLength(); ++vecEntryPos){
+            int vecElement = branch_pindex->getValue(vecEntryPos);
+            idxmap[vecElement].push_back(vecEntryPos);
+        }
+    }
+    return idxmap;
+}
+
+//funtion for calculating total cal_energy(PCal+ECin+ECout)
+void Calorimeter_bank(hipoF* cal_ener_branch,hipo8* cal_layer_branch,hipoF* cal_lu_branch,hipoF* cal_lv_branch,hipoF* cal_lw_branch,hipoF* cal_X_branch,hipoF* cal_Y_branch,hipoF* cal_Z_branch, vectorMap Cmap,int keyval, vector<float> &Cal_energy, vector<float> &lu, vector<float> &lv, vector<float> &lw, vector<float> &Xcal,vector<float> &Ycal,vector<float> &Zcal){
+    auto imap=Cmap.find(keyval);
+    if (imap !=Cmap.end()) {
+        vector <int> inVect = (*imap).second;
+        for (int ix=0; ix<inVect.size(); ix++){
+            int mapCol=inVect[ix];
+            if(cal_layer_branch->getValue(mapCol)==1){
+                Cal_energy.push_back(cal_ener_branch->getValue(mapCol));
+                lu.push_back(cal_lu_branch->getValue(mapCol));
+                lv.push_back(cal_lv_branch->getValue(mapCol));
+                lw.push_back(cal_lw_branch->getValue(mapCol));
+                Xcal.push_back(cal_X_branch->getValue(mapCol));
+                Ycal.push_back(cal_Y_branch->getValue(mapCol));
+                Zcal.push_back(cal_Z_branch->getValue(mapCol));
+            }else if(cal_layer_branch->getValue(mapCol)==4){
+                Cal_energy.push_back(cal_ener_branch->getValue(mapCol));
+                lu.push_back(cal_lu_branch->getValue(mapCol));
+                lv.push_back(cal_lv_branch->getValue(mapCol));
+                lw.push_back(cal_lw_branch->getValue(mapCol));
+                Xcal.push_back(cal_X_branch->getValue(mapCol));
+                Ycal.push_back(cal_Y_branch->getValue(mapCol));
+                Zcal.push_back(cal_Z_branch->getValue(mapCol));
+            }else if(cal_layer_branch->getValue(mapCol)==7){
+                Cal_energy.push_back(cal_ener_branch->getValue(mapCol));
+                lu.push_back(cal_lu_branch->getValue(mapCol));
+                lv.push_back(cal_lv_branch->getValue(mapCol));
+                lw.push_back(cal_lw_branch->getValue(mapCol));
+                Xcal.push_back(cal_X_branch->getValue(mapCol));
+                Ycal.push_back(cal_Y_branch->getValue(mapCol));
+                Zcal.push_back(cal_Z_branch->getValue(mapCol));
+            }
+        }
+    }
+    return;
+}
+
 
