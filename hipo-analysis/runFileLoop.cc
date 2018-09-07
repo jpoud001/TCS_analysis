@@ -146,6 +146,7 @@ int main(int argc, char** argv) {
     
 
    hipo::reader  reader;
+            cout<<"***** Reading file: "<<inputFile<<"*****"<<endl;
    reader.open(inputFile);
     
 
