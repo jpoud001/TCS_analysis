@@ -40,19 +40,28 @@
 #include <unordered_map>
 #include <float.h>
 #include <TROOT.h>
+#include <TLatex.h>
+#include <TPaveText.h>
+#include <THStack.h>
+#include <TLegend.h>
 
 using namespace std;
 
 typedef unordered_map<int,vector<int>> vectorMap;
 typedef hipo::node<float> hipoF;
+typedef hipo::node<int32_t> hipo32;
 typedef hipo::node<int16_t> hipo16;
 typedef hipo::node<int8_t> hipo8;
 
 
 //----------- Functions -----------------------
+void tcs_event_test(hipo32* branch_pid, bool &Tcs_event);
 vectorMap loadMapIndex(hipo16* branch_pindex);
-void Calorimeter_bank(hipoF* cal_ener_branch,hipo8* cal_layer_branch,hipoF* cal_lu_branch,hipoF* cal_lv_branch,hipoF* cal_lw_branch,hipoF* cal_X_branch,hipoF* cal_Y_branch,hipoF* cal_Z_branch, vectorMap Cmap,int keyval,vector<float> &Cal_energy, vector<float> &lu, vector<float> &lv, vector<float> &lw, vector<float> &Xcal,vector<float> &Ycal,vector<float> &Zcal);
+void Calorimeter_bank(hipoF* cal_ener_branch,hipo8* cal_layer_branch,hipo8* cal_sector_branch,hipoF* cal_lu_branch,hipoF* cal_lv_branch,hipoF* cal_lw_branch,hipoF* cal_X_branch,hipoF* cal_Y_branch,hipoF* cal_Z_branch, vectorMap Cmap,int keyval, int& sector, vector<float> &Cal_energy, vector<float> &lu, vector<float> &lv, vector<float> &lw, vector<float> &Xcal,vector<float> &Ycal,vector<float> &Zcal);
+void lepton_pair_frame(TLorentzVector e_in4vect, TLorentzVector p_in4vect, TLorentzVector elec_pr4vect, TLorentzVector pos_pr4vect, TLorentzVector p_pr4vect, double &phi);
 //---------------------------------------------
+
+
 
 //#################  main program   ###################
 //#####################################################
@@ -60,73 +69,108 @@ int main(int argc, char** argv) {
    std::cout << " reading file example program (HIPO) " << std::endl;
    char inputFile[256];
     
+    ofstream out("helicity_phi.txt");
+    
+    out<< "helicity" <<"\t"<< setw(8)<< "phi" <<"\n";
+    
+    
+    //Defining canvas and basic formatting
     TCanvas *c1 = new TCanvas("c1","c1",2500,1500);
     TCanvas *c2 = new TCanvas("c2","c2",2500,2500);
     TCanvas *c3 = new TCanvas("c3","c3",2500,2500);
     
     gStyle->SetTitleAlign(23);
     gStyle->SetLineWidth(2);
-    gStyle->SetHistLineWidth(2);
+    gStyle->SetHistLineWidth(2.3);
     gStyle->SetTitleXOffset(0.98);
     gStyle->SetTitleYOffset(1.3);
     gStyle->SetTitleSize(0.04,"X");
     gStyle->SetTitleSize(0.04,"Y");
     gStyle->SetLabelSize(0.04,"X");
     gStyle->SetLabelSize(0.04,"Y");
+    gStyle->SetLineColorAlpha(kBlue,0);
+    gStyle->SetStatY(0.95);
+    gStyle->SetStatX(0.9);
+    //gStyle->SetStatW(0.1);
+    //gStyle->SetStatH(0.1);
     gPad->SetLeftMargin(0.16);
     gPad->SetRightMargin(0.16);
     gROOT->ForceStyle(true);
     
     //*********** Creating Histograms ************************
     
-    TH1D *h_rec_momen_elec = new TH1D("h_rec_momen_elec","Rec.Elec.Momentum",300,0.0,0.0);
-    TH1D *h_rec_momen_posit = new TH1D("h_rec_momen_posit","Rec.Posit.Momentum",250,0.0,0.0);
-    TH1D *h_rec_momen_proton = new TH1D("h_rec_momen_proton","Rec.Proton.Momentum",200,0.0,0.0);
+    // sector-wise histograms
+    TH1D *h_rec_theta_electron[7];
+    TH1D *h_rec_theta_positron[7];
+    TH1D *h_rec_momentum_electron[7];
+    TH1D *h_rec_momentum_positron[7];
+    TH1D *h_sampling_frac_electron[7];
+    TH1D *h_sampling_frac_positron[7];
+    TH2D *sampling_vs_P_electron[7];
+    TH2D *sampling_vs_P_positron[7];
     
-    TH1I *h_rec_charge = new TH1I("h_rec_charge","Rec.Particle.Charge",6,-3,3);
-    TH1I *h_rec_pid= new TH1I("h_rec_pid", "Rec.Particle.PID",1000,0,0);
-    TH1D *h_rec_beta= new TH1D("h_rec_beta","Rec.Particle.beta",1000,0.0,0.0);
-    TH1D *h_rec_chi2pid_elec = new TH1D("h_rec_chi2pid_elec","Rec.Elec.chi2pid",100,0.0,0.0);
-    TH1D *h_rec_chi2pid_posit = new TH1D("h_rec_chi2pid_posit","Rec.Posit.chi2pid",100,0.0,0.0);
-    TH1D *h_rec_chi2pid_proton = new TH1D("h_rec_chi2pid_proton","Rec.Proton.chi2pid",100,0.0,0.0);
+    char name[20];
+    for(int i=1; i<7; ++i){
+        sprintf(name,"sector_%d",i);
+        h_rec_theta_electron[i]=new TH1D("",name,90,0.0,45.0);
+        h_rec_theta_positron[i]=new TH1D("",name,70,0.0,35.0);
+        h_rec_momentum_electron[i]= new TH1D("",name,220,0.0,11.0);
+        h_rec_momentum_positron[i]= new TH1D("",name,160,0.0,8.0);
+        h_sampling_frac_electron[i]=new TH1D("",name,55,0.12,0.34);
+        h_sampling_frac_positron[i]=new TH1D("",name,55,0.12,0.34);
+        sampling_vs_P_electron[i]=new TH2D("",name,400,0.0,10.0,250,0.1,0.35);
+        sampling_vs_P_positron[i]=new TH2D("",name,320,0.0,8.0,250,0.1,0.35);
+    }
     
     
-    TH1D *h_rec_theta_elec = new TH1D("h_rec_theta_elec","Rec.Elec.theta",90,0.0,60.0);
-    TH1D *h_rec_theta_posit = new TH1D("h_rec_theta_posit","Rec.Posit.theta",90,0.0,60.0);
-    TH1D *h_rec_theta_proton = new TH1D("h_rec_theta_proton","Rec.Proton.theta",320,0.0,160.0);
+    TH1D *h_rec_momen_elec = new TH1D("","Rec.Elec.Momentum",300,0.0,0.0);
+    TH1D *h_rec_momen_posit = new TH1D("","Rec.Posit.Momentum",250,0.0,0.0);
+    TH1D *h_rec_momen_proton = new TH1D("","Rec.Proton.Momentum",200,0.0,0.0);
+    
+    TH1I *h_rec_charge = new TH1I("","Rec.Particle.Charge",6,-3,3);
+    TH1D *h_rec_sttime= new TH1D("", "Rec.Event.Starttime",100,0.0,0.0);
+    TH1D *h_rec_beta= new TH1D("","Rec.Particle.beta",1000,0.0,0.0);
+    TH1D *h_rec_chi2pid_elec = new TH1D("","Rec.Elec.chi2pid",100,-10.0,10.0);
+    TH1D *h_rec_chi2pid_posit = new TH1D("","Rec.Posit.chi2pid",100,0.0,0.0);
+    TH1D *h_rec_chi2pid_proton = new TH1D("","Rec.Proton.chi2pid",200,-100.0,100.0);
+    
+    
+    TH1D *h_rec_theta_elec = new TH1D("h_rec_theta_elec","Rec.Elec.theta",90,0.0,45.0);
+    TH1D *h_rec_theta_posit = new TH1D("h_rec_theta_posit","Rec.Posit.theta",70,0.0,35.0);
+    TH1D *h_rec_theta_proton = new TH1D("h_rec_theta_proton","Rec.Proton.theta",270,0.0,135.0);
     
     TH1D *h_rec_phi_elec = new TH1D("h_rec_phi_elec","Rec.Elec.phi",360,-180.0,180.0);
     TH1D *h_rec_phi_posit = new TH1D("h_rec_phi_posit","Rec.Posit.phi",360,-180.0,180.0);
     TH1D *h_rec_phi_proton = new TH1D("h_rec_phi_proton","Rec.Proton.phi",360,-180.0,180.0);
     
-    TH1D *h_elec_sampl_frac= new TH1D("h_elec_sampl_frac","Elec.Sampling.fraction",100,0.0,0.0);
-    TH1D *h_posit_sampl_frac= new TH1D("h_posit_sampl_frac","Posit.Sampling.fraction",100,0.0,0.0);
-    TH2D *h_elec_samplfrac_vs_P= new TH2D("h_elec_samplfrac_vs_P","Elec.Sampling.fraction.vs.P",300,0.0,0.0,100,0.0,0.0);
-    TH2D *h_posit_samplfrac_vs_P= new TH2D("h_posit_samplfrac_vs_P","Posit.Sampling.fraction.vs.P",300,0.0,0.0,100,0.0,0.0);
+    //TH1D *h_elec_sampl_frac= new TH1D("","Elec.Sampling.fraction",100,0.0,0.0);
+    //TH1D *h_posit_sampl_frac= new TH1D("","Posit.Sampling.fraction",100,0.0,0.0);
+    //TH2D *h_elec_samplfrac_vs_P= new TH2D("","Elec.Sampling.fraction.vs.P",400,0.0,12.0,250,0.1,0.35);
+    //TH2D *h_posit_samplfrac_vs_P= new TH2D("","Posit.Sampling.fraction.vs.P",300,0.0,9.0,250,0.1,0.35);
     
-    TH2D *h_theta_phi_elec= new TH2D("h_theta_phi_elec","Rec.Theta.vs.Phi.elec",360,-180.0,180.0,100,0.0,60.0);
-    TH2D *h_theta_phi_posit= new TH2D("h_theta_phi_posit","Rec.Theta.vs.Phi.posit",360,-180.0,180.0,100,0.0,60.0);
-    TH2D *h_theta_phi_proton= new TH2D("h_theta_phi_proton","Rec.Theta.vs.Phi.proton",360,-180.0,180.0,320,0.0,180.0);
-    TH2D *h_theta_mom_elec= new TH2D("h_theta_mom_elec","Rec.Theta.vs.Mom.elec",300,0.0,0.0,120,0.0,60.0);
-    TH2D *h_theta_mom_posit= new TH2D("h_theta_mom_posit","Rec.Theta.vs.Mom.posit",275,0.0,0.0,120,0.0,60.0);
-    TH2D *h_theta_mom_proton= new TH2D("h_theta_mom_proton","Rec.Theta.vs.Mom.proton",225,0.0,0.0,360,0.0,180.0);
+    TH2D *h_theta_phi_elec= new TH2D("","Rec.Theta.vs.Phi.elec",360,-180.0,180.0,90,0.0,45.0);
+    TH2D *h_theta_phi_posit= new TH2D("","Rec.Theta.vs.Phi.posit",360,-180.0,180.0,80,0.0,40.0);
+    TH2D *h_theta_phi_proton= new TH2D("","Rec.Theta.vs.Phi.proton",360,-180.0,180.0,320,0.0,160.0);
+    TH2D *h_theta_mom_elec= new TH2D("","Rec.Theta.vs.Mom.elec",360,0.0,12.0,120,0.0,60.0);
+    TH2D *h_theta_mom_posit= new TH2D("","Rec.Theta.vs.Mom.posit",270,0.0,9.0,120,0.0,40.0);
+    TH2D *h_theta_mom_proton= new TH2D("","Rec.Theta.vs.Mom.proton",225,0.0,0.0,360,0.0,0.0);
     
-    TH2D *h_ECin_vs_ECout_neg_particle= new TH2D("h_ECin_vs_ECout_neg_particle","REC.ECin.vs.ECout.neg.particle",200,0.0,0.0,200,0,0.0);
-    TH2D *h_ECin_vs_ECout_pos_particle= new TH2D("h_ECin_vs_ECout_pos_particle","REC.ECin.vs.ECout.pos.particle",200,0.0,0.0,200,0,0.0);
-    TH2D *h_ECal_vs_Pcal_neg_particle= new TH2D("h_ECal_vs_Pcal_neg_particle","REC.ECal.vs.Pcal.neg.particle",200,0.0,0.0,200,0,0.0);
-    TH2D *h_ECal_vs_Pcal_pos_particle= new TH2D("h_ECal_vs_Pcal_pos_particle","REC.ECal.vs.Pcal.pos.particle",200,0.0,0.0,200,0,0.0);
+    TH2D *h_ECin_vs_ECout_neg_particle= new TH2D("","REC.ECin.vs.ECout.neg.particle",200,0.0,1.3,200,0,0.50);
+    TH2D *h_ECin_vs_ECout_pos_particle= new TH2D("","REC.ECin.vs.ECout.pos.particle",200,0.0,1.1,200,0,1.6);
+    TH2D *h_ECal_vs_Pcal_neg_particle= new TH2D("","REC.ECal.vs.Pcal.neg.particle",200,0.0,1.7,200,0,1.25);
+    TH2D *h_ECal_vs_Pcal_pos_particle= new TH2D("","REC.ECal.vs.Pcal.pos.particle",200,0.0,1.7,200,0,1.4);
     
-    TH1D *h_rec_lu_neg=new TH1D("h_rec_lu_neg","REC.lu.neg.particle",1000,0.0,0.0);
-    TH1D *h_rec_lv_neg=new TH1D("h_rec_lv_neg","REC.lv.neg.particle",1000,0.0,0.0);
-    TH1D *h_rec_lw_neg=new TH1D("h_rec_lw_neg","REC.lw.neg.particle",1000,0.0,0.0);
-    TH1D *h_rec_lu_pos=new TH1D("h_rec_lu_pos","REC.lu.pos.particle",1000,0.0,0.0);
-    TH1D *h_rec_lv_pos=new TH1D("h_rec_lv_pos","REC.lv.pos.particle",1000,0.0,0.0);
-    TH1D *h_rec_lw_pos=new TH1D("h_rec_lw_pos","REC.lw.pos.particle",1000,0.0,0.0);
+    TH1D *h_rec_lu_pcal_elec=new TH1D("","REC.lu.e-",45,0.0,450.0);
+    TH1D *h_rec_lv_pcal_elec=new TH1D("","REC.lv.e-",45,0.0,450.0);
+    TH1D *h_rec_lw_pcal_elec=new TH1D("","REC.lw.e-",45,0.0,450.0);
+    TH1D *h_rec_lu_pcal_posit=new TH1D("","REC.lu.e+",45,0.0,450.0);
+    TH1D *h_rec_lv_pcal_posit=new TH1D("","REC.lv.e+",45,0.0,450.0);
+    TH1D *h_rec_lw_pcal_posit=new TH1D("","REC.lw.e+",45,0.0,450.0);
     
-    TH2D *h_beta_vs_mom_neg_particle= new TH2D("h_beta_vs_mom_neg_particle","REC.beta.vs.Mom.neg.particle",275,0.0,0.0,200,0.0,0.0);
-    TH2D *h_beta_vs_mom_pos_particle= new TH2D("h_beta_vs_mom_pos_particle","REC.beta.vs.Mom.pos.particle",275,0.0,0.0,200,0.0,0.0);
-    TH2D *h_rec_pcalXY_neg_particle=new TH2D("h_rec_pcalXY_neg_particle","REC.PCalXY.neg.particle",800,0,0,800,0,0);
-    TH2D *h_rec_pcalXY_pos_particle=new TH2D("h_rec_pcalXY_pos_particle","REC.PCalXY.pos.particle",800,0,0,800,0,0);
+    TH2D *h_beta_vs_mom_neg_particle= new TH2D("","REC.beta.vs.Mom.neg.particle",450,0.0,4.5,400,-2.0,2.0);
+    TH2D *h_beta_vs_mom_pos_particle= new TH2D("","REC.beta.vs.Mom.pos.particle",450,0.0,4.5,400,-2.0,2.0);
+    TH2D *h_rec_pcalXY_electron=new TH2D("","REC.PCalXY.Electron",800,0,0,800,0,0);
+    TH2D *h_rec_pcalXY_positron=new TH2D("","REC.PCalXY.positron",800,0,0,800,0,0);
     
     //***********************************************
 
@@ -141,15 +185,18 @@ int main(int argc, char** argv) {
         exit(0);
     } else{
         auto n_argc=argc;
-        for(int n_argv=1; n_argv<n_argc;++n_argv){
-            sprintf(inputFile,"%s",argv[n_argv]);
+        
+        
+        //Loop to include all the input files to analyze
+    for(int n_argv=1; n_argv<n_argc;++n_argv){
+        sprintf(inputFile,"%s",argv[n_argv]);
     
 
    hipo::reader  reader;
-            cout<<"***** Reading file: "<<inputFile<<"*****"<<endl;
+            cout<<"***** Reading file: "<<inputFile<<"  *****"<<endl;
    reader.open(inputFile);
     
-
+            //{
     /*
    hipo::node<int32_t>         *BMT__adc_ADC = reader.getBranch<int32_t>("BMT::adc","ADC");
    hipo::node<int16_t>   *BMT__adc_component = reader.getBranch<int16_t>("BMT::adc","component");
@@ -1593,37 +1640,79 @@ int main(int argc, char** argv) {
    hipo::node<float>       *TimeBasedTrkg__Trajectory_y = reader.getBranch<float>("TimeBasedTrkg::Trajectory","y");
    hipo::node<float>       *TimeBasedTrkg__Trajectory_z = reader.getBranch<float>("TimeBasedTrkg::Trajectory","z");
     */
+
+            //}
+            
+            // ########################################################
    //----------------------------------------------------
    //--  Main LOOP running through events and printing
-   //--  values of the first decalred branch
+   //--  values of the first declared branch
    //----------------------------------------------------
+            //#########################################################
     
    int entry = 0;
     
    while(reader.next()==true){
-      entry++;
-      int n_particles=REC__Particle_charge->getLength();
+       //entry++;
+       
+       double beam_erg = 10.6;
+       
+       TLorentzVector p_in4vect(0.0,0.0,0.0,0.938);
+       TLorentzVector e_in4vect(0.0,0.0,beam_erg,beam_erg);
+       TLorentzVector elec_pr4vect;
+       TLorentzVector pos_pr4vect;
+       TLorentzVector p_pr4vect;
+       
+       //--- checking event with electron, positron and proton-----
+       bool Tcs_event=false;
+       tcs_event_test(REC__Particle_pid, Tcs_event);
+       
+       auto Evnt_sttime=REC__Event_STTime->getValue(entry);
+       
+       // selecting only the events with electron, positron and proton
+       if(Tcs_event==false){
+           continue;
+       }
+       
+       //-----helicity declaration-------
+       
+       auto helicity = REC__Event_Helic->getValue(entry);
+       int helicity_val=helicity;
+       
+       //if(helicity!=0 && helicity!=1){
+           //continue;
+       //}
+       
        
        //-----------------------------------------------------
-       //------load map for each entry/event for pindex-------
+       //------load calorimeter mapping for each entry/event for pindex-------
        vectorMap calomap = loadMapIndex(REC__Calorimeter_pindex);
        //-----------------------------------------------------
-      
-      for(int vecEntry = 0; vecEntry < n_particles; ++vecEntry){
+       
+      int n_particles=REC__Particle_charge->getLength();
+       
+       //if(helicity==1){
+           
+           h_rec_sttime->Fill(Evnt_sttime);
+           
+      for(int particle_num = 0; particle_num < n_particles; ++particle_num){
           
           
-          auto PID = REC__Particle_pid->getValue(vecEntry);
-          auto beta= REC__Particle_beta->getValue(vecEntry);
-          auto particle_charge= REC__Particle_charge->getValue(vecEntry);
-          auto px = REC__Particle_px->getValue(vecEntry);
-          auto py = REC__Particle_py->getValue(vecEntry);
-          auto pz = REC__Particle_pz->getValue(vecEntry);
-          auto chi2 = REC__Particle_chi2pid->getValue(vecEntry);
+          auto PID = REC__Particle_pid->getValue(particle_num);
+          auto beta= REC__Particle_beta->getValue(particle_num);
+          auto particle_charge= REC__Particle_charge->getValue(particle_num);
+          auto px = REC__Particle_px->getValue(particle_num);
+          auto py = REC__Particle_py->getValue(particle_num);
+          auto pz = REC__Particle_pz->getValue(particle_num);
+          auto chi2 = REC__Particle_chi2pid->getValue(particle_num);
+          auto det_status = REC__Particle_status->getValue(particle_num);
+          int detector_type=det_status/1000;
+          
           TVector3 Mom3Vector(px,py,pz);
           auto rec_momentum = Mom3Vector.Mag();
           
+          
           h_rec_charge->Fill(particle_charge);
-          h_rec_pid->Fill(PID);
           h_rec_beta->Fill(beta);
           
           if(particle_charge==-1){
@@ -1636,15 +1725,17 @@ int main(int argc, char** argv) {
           //------------------------------------------------------
           //-------- Looking the calorimeter map -----------------
           vector<float> Cal_energy; vector<float> lu; vector<float> lv; vector<float> lw; vector<float> Xcal; vector<float> Ycal; vector<float> Zcal;
-          Cal_energy.clear(); lu.clear(); lv.clear(); lw.clear(); Xcal.clear(); Ycal.clear(); Zcal.clear();
+          Cal_energy.clear(); lu.clear(); lv.clear(); lw.clear(); Xcal.clear(); Ycal.clear(); Zcal.clear(); int sector=0;
           //Implementation of Calorimeter bank function
-          Calorimeter_bank(REC__Calorimeter_energy,REC__Calorimeter_layer,REC__Calorimeter_lu,REC__Calorimeter_lv,REC__Calorimeter_lw,REC__Calorimeter_x,REC__Calorimeter_y,REC__Calorimeter_z,calomap,vecEntry, Cal_energy,lu,lv,lw,Xcal,Ycal,Zcal);
+          Calorimeter_bank(REC__Calorimeter_energy,REC__Calorimeter_layer,REC__Calorimeter_sector,REC__Calorimeter_lu,REC__Calorimeter_lv,REC__Calorimeter_lw,REC__Calorimeter_x,REC__Calorimeter_y,REC__Calorimeter_z,calomap,particle_num,sector, Cal_energy,lu,lv,lw,Xcal,Ycal,Zcal);
           //------------------------------------------------------
           
           // Calorimeter plots
           auto Cal_total_energy=0.0;
-          if(calomap.find(vecEntry)!=calomap.end()){
-              for(int jj=0; jj<Cal_energy.size();++jj){
+          auto clas_sector=sector;
+          auto Cal_layer=Cal_energy.size();
+          if(calomap.find(particle_num)!=calomap.end()){
+              for(int jj=0; jj<Cal_layer;++jj){
                   auto lu_value= lu.at(jj);
                   auto lv_value= lv.at(jj);
                   auto lw_value= lw.at(jj);
@@ -1653,11 +1744,14 @@ int main(int argc, char** argv) {
                   Cal_total_energy=Cal_total_energy+Cal_energy.at(jj);
                   
                   if(particle_charge==-1){
-                      h_rec_lu_neg->Fill(lu_value);
-                      h_rec_lv_neg->Fill(lv_value);
-                      h_rec_lw_neg->Fill(lw_value);
-                      h_rec_pcalXY_neg_particle->Fill(cal_x_position,cal_y_position);
-                      if(jj==2){
+                      if(jj==0){
+                          if(PID==11){
+                              h_rec_lu_pcal_elec->Fill(lu_value);
+                              h_rec_lv_pcal_elec->Fill(lv_value);
+                              h_rec_lw_pcal_elec->Fill(lw_value);
+                              h_rec_pcalXY_electron->Fill(cal_x_position,cal_y_position);
+                          }
+                      }else if(jj==2){
                           //auto PCal_energy=Cal_energy.at(0);
                           //auto ECin_energy=Cal_energy.at(1);
                           //auto ECout_energy=Cal_energy.at(2);
@@ -1665,11 +1759,14 @@ int main(int argc, char** argv) {
                           h_ECal_vs_Pcal_neg_particle->Fill(Cal_energy.at(1)+Cal_energy.at(2),Cal_energy.at(0));
                       }
                   }else if(particle_charge==1){
-                      h_rec_lu_pos->Fill(lu_value);
-                      h_rec_lv_pos->Fill(lv_value);
-                      h_rec_lw_pos->Fill(lw_value);
-                      h_rec_pcalXY_pos_particle->Fill(cal_x_position,cal_y_position);
-                      if(jj==2){
+                      if(jj==0){
+                          if(PID==-11){
+                              h_rec_lu_pcal_posit->Fill(lu_value);
+                              h_rec_lv_pcal_posit->Fill(lv_value);
+                              h_rec_lw_pcal_posit->Fill(lw_value);
+                              h_rec_pcalXY_positron->Fill(cal_x_position,cal_y_position);
+                          }
+                      }else if(jj==2){
                           h_ECin_vs_ECout_pos_particle->Fill(Cal_energy.at(1),Cal_energy.at(2));
                           h_ECal_vs_Pcal_pos_particle->Fill(Cal_energy.at(1)+Cal_energy.at(2),Cal_energy.at(0));
                       }
@@ -1677,87 +1774,159 @@ int main(int argc, char** argv) {
               }
           }
           
-          // selecting particular PID
-          if(PID==11){
-              TVector3 elecMom3Vector(Mom3Vector);
-              h_rec_momen_elec->Fill(elecMom3Vector.Mag());
+          // selecting particular PIDs
+          if(PID==11 && (detector_type==2)){
+              h_rec_momen_elec->Fill(Mom3Vector.Mag());
               h_rec_chi2pid_elec->Fill(chi2);
-              h_rec_theta_elec->Fill(elecMom3Vector.Theta()*TMath::RadToDeg());
-              h_rec_phi_elec->Fill(elecMom3Vector.Phi()*TMath::RadToDeg());
-              //TLorentzVector elecMom4Vector(elecMom3Vector,sqrt(elecMom3Vector.Mag2()+0.0005*0.0005));
-              h_theta_phi_elec->Fill(elecMom3Vector.Phi()*TMath::RadToDeg(),elecMom3Vector.Theta()*TMath::RadToDeg());
-              h_theta_mom_elec->Fill(elecMom3Vector.Mag(),elecMom3Vector.Theta()*TMath::RadToDeg());
+              h_rec_theta_elec->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+              h_rec_phi_elec->Fill(Mom3Vector.Phi()*TMath::RadToDeg());
+              elec_pr4vect.SetVect(Mom3Vector);
+              elec_pr4vect.SetE(sqrt(Mom3Vector.Mag2()+0.0005*0.0005));
               
-              if(calomap.find(vecEntry)!=calomap.end()){
-                  h_elec_sampl_frac->Fill(Cal_total_energy/elecMom3Vector.Mag());
-                  h_elec_samplfrac_vs_P->Fill(elecMom3Vector.Mag(),Cal_total_energy/elecMom3Vector.Mag());
+              if(clas_sector==1){
+                  h_rec_momentum_electron[1]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_electron[1]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_electron[1]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_electron[1]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==2){
+                  h_rec_momentum_electron[2]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_electron[2]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_electron[2]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_electron[2]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==3){
+                  h_rec_momentum_electron[3]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_electron[3]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_electron[3]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_electron[3]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==4){
+                  h_rec_momentum_electron[4]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_electron[4]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_electron[4]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_electron[4]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==5){
+                  h_rec_momentum_electron[5]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_electron[5]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_electron[5]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_electron[5]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==6){
+                  h_rec_momentum_electron[6]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_electron[6]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_electron[6]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_electron[6]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
               }
-          }else if(PID==-11){
-              TVector3 postrnMom3Vector(Mom3Vector);
-              h_rec_momen_posit->Fill(postrnMom3Vector.Mag());
+              
+              h_theta_phi_elec->Fill(Mom3Vector.Phi()*TMath::RadToDeg(),Mom3Vector.Theta()*TMath::RadToDeg());
+              h_theta_mom_elec->Fill(Mom3Vector.Mag(),Mom3Vector.Theta()*TMath::RadToDeg());
+              
+              //h_elec_sampl_frac->Fill(Cal_total_energy/Mom3Vector.Mag());
+              //h_elec_samplfrac_vs_P->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+          }else if(PID==-11 && (detector_type==2)){
+              h_rec_momen_posit->Fill(Mom3Vector.Mag());
               h_rec_chi2pid_posit->Fill(chi2);
-              h_rec_theta_posit->Fill(postrnMom3Vector.Theta()*TMath::RadToDeg());
-              h_rec_phi_posit->Fill(postrnMom3Vector.Phi()*TMath::RadToDeg());
-              //TLorentzVector posMom4Vector(postrnMom3Vector,sqrt(postrnMom3Vector.Mag2()+0.0005*0.0005));
-              h_theta_phi_posit->Fill(postrnMom3Vector.Phi()*TMath::RadToDeg(),postrnMom3Vector.Theta()*TMath::RadToDeg());
-              h_theta_mom_posit->Fill(postrnMom3Vector.Mag(),postrnMom3Vector.Theta()*TMath::RadToDeg());
+              h_rec_theta_posit->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+              h_rec_phi_posit->Fill(Mom3Vector.Phi()*TMath::RadToDeg());
+              pos_pr4vect.SetVect(Mom3Vector);
+              pos_pr4vect.SetE(sqrt(Mom3Vector.Mag2()+0.0005*0.0005));
               
-              if(calomap.find(vecEntry)!=calomap.end()){
-                  h_posit_sampl_frac->Fill(Cal_total_energy/postrnMom3Vector.Mag());
-                  h_posit_samplfrac_vs_P->Fill(postrnMom3Vector.Mag(),Cal_total_energy/postrnMom3Vector.Mag());
+              if(clas_sector==1){
+                  h_rec_momentum_positron[1]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_positron[1]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_positron[1]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_positron[1]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==2){
+                  h_rec_momentum_positron[2]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_positron[2]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_positron[2]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_positron[2]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==3){
+                  h_rec_momentum_positron[3]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_positron[3]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_positron[3]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_positron[3]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==4){
+                  h_rec_momentum_positron[4]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_positron[4]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_positron[4]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_positron[4]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==5){
+                  h_rec_momentum_positron[5]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_positron[5]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_positron[5]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_positron[5]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+              }else if(clas_sector==6){
+                  h_rec_momentum_positron[6]->Fill(Mom3Vector.Mag());
+                  h_rec_theta_positron[6]->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+                  h_sampling_frac_positron[6]->Fill(Cal_total_energy/Mom3Vector.Mag());
+                  sampling_vs_P_positron[6]->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
               }
-          }else if(PID==2212){
-              TVector3 protMom3Vector(Mom3Vector);
-              h_rec_momen_proton->Fill(protMom3Vector.Mag());
+              
+              h_theta_phi_posit->Fill(Mom3Vector.Phi()*TMath::RadToDeg(),Mom3Vector.Theta()*TMath::RadToDeg());
+              h_theta_mom_posit->Fill(Mom3Vector.Mag(),Mom3Vector.Theta()*TMath::RadToDeg());
+              
+              //h_posit_sampl_frac->Fill(Cal_total_energy/Mom3Vector.Mag());
+              //h_posit_samplfrac_vs_P->Fill(Mom3Vector.Mag(),Cal_total_energy/Mom3Vector.Mag());
+          }else if(PID==2212 && (detector_type==2 || detector_type==4)){
+              h_rec_momen_proton->Fill(Mom3Vector.Mag());
               h_rec_chi2pid_proton->Fill(chi2);
-              h_rec_theta_proton->Fill(protMom3Vector.Theta()*TMath::RadToDeg());
-              h_rec_phi_proton->Fill(protMom3Vector.Phi()*TMath::RadToDeg());
-              //TLorentzVector protMom4Vector(protMom3Vector,sqrt(protMom3Vector.Mag2()+0.938*0.938));
-              h_theta_phi_proton->Fill(protMom3Vector.Phi()*TMath::RadToDeg(),protMom3Vector.Theta()*TMath::RadToDeg());
-              h_theta_mom_proton->Fill(protMom3Vector.Mag(),protMom3Vector.Theta()*TMath::RadToDeg());
-          }else{
+              h_rec_theta_proton->Fill(Mom3Vector.Theta()*TMath::RadToDeg());
+              h_rec_phi_proton->Fill(Mom3Vector.Phi()*TMath::RadToDeg());
+              p_pr4vect.SetVect(Mom3Vector);
+              p_pr4vect.SetE(sqrt(Mom3Vector.Mag2()+0.938*0.938));
+              
+              h_theta_phi_proton->Fill(Mom3Vector.Phi()*TMath::RadToDeg(),Mom3Vector.Theta()*TMath::RadToDeg());
+              h_theta_mom_proton->Fill(Mom3Vector.Mag(),Mom3Vector.Theta()*TMath::RadToDeg());
           }
           
-       } //end of "for" loop over vecEntry of particle
+       } //end of "for" loop over particle_num of particle
+       //}
+       
+       //Function changing the frame of reference
+       double phi;
+       lepton_pair_frame(e_in4vect, p_in4vect, elec_pr4vect, pos_pr4vect, p_pr4vect, phi);
+       
+       out<< helicity_val <<"\t"<< setw(8)<< phi<<"\n";
+       
     } //end loop over events in "while" loop in reader.next()
     } //end loop over different hipo files
     } // end of if..else of argv
+    
     
     //++++++++++++++ Drawing Histograms ++++++++++++++++
     
     c1->Divide(3,1);
     c1->cd(1); h_rec_momen_elec->Draw();
     h_rec_momen_elec->GetXaxis()->SetTitle("e- mom [GeV]");
-    h_rec_momen_elec->GetYaxis()->SetTitle("counts");
+    //h_rec_momen_elec->GetYaxis()->SetTitle("counts");
     c1->cd(2); h_rec_momen_posit->Draw();
     h_rec_momen_posit->GetXaxis()->SetTitle("e+ mom [GeV]");
-    h_rec_momen_posit->GetYaxis()->SetTitle("counts");
+    //h_rec_momen_posit->GetYaxis()->SetTitle("counts");
     c1->cd(3); h_rec_momen_proton->Draw();
     h_rec_momen_proton->GetXaxis()->SetTitle("p mom [GeV]");
-    h_rec_momen_proton->GetYaxis()->SetTitle("counts");
-    c1->Print("figs/rec_mom.png"); //c1->Clear();
+    //h_rec_momen_proton->GetYaxis()->SetTitle("counts");
+    c1->Print("figs/hipo_rec_mom_excl.png"); //c1->Clear();
     
     c2->Divide(3,2);
     
     c2->cd(1); h_rec_theta_elec->Draw();
     h_rec_theta_elec->GetXaxis()->SetTitle("theta [degree]");
-    h_rec_theta_elec->GetYaxis()->SetTitle("counts");
+    //h_rec_theta_elec->GetYaxis()->SetTitle("counts");
     c2->cd(2); h_rec_theta_posit->Draw();
     h_rec_theta_posit->GetXaxis()->SetTitle("theta [degree]");
-    h_rec_theta_posit->GetYaxis()->SetTitle("counts");
+    //h_rec_theta_posit->GetYaxis()->SetTitle("counts");
     c2->cd(3); h_rec_theta_proton->Draw();
     h_rec_theta_proton->GetXaxis()->SetTitle("theta [degree]");
-    h_rec_theta_proton->GetYaxis()->SetTitle("counts");
+    //h_rec_theta_proton->GetYaxis()->SetTitle("counts");
     c2->cd(4); h_rec_phi_elec->Draw();
     h_rec_phi_elec->GetXaxis()->SetTitle("phi [degree]");
-    h_rec_phi_elec->GetYaxis()->SetTitle("counts");
+    //h_rec_phi_elec->GetYaxis()->SetTitle("counts");
     c2->cd(5); h_rec_phi_posit->Draw();
     h_rec_phi_posit->GetXaxis()->SetTitle("phi [degree]");
-    h_rec_phi_posit->GetYaxis()->SetTitle("counts");
+    //h_rec_phi_posit->GetYaxis()->SetTitle("counts");
     c2->cd(6); h_rec_phi_proton->Draw();
     h_rec_phi_proton->GetXaxis()->SetTitle("phi [degree]");
-    h_rec_phi_proton->GetYaxis()->SetTitle("counts");
-    c2->Print("figs/rec_theta_phi.png");
+    //h_rec_phi_proton->GetYaxis()->SetTitle("counts");
+    c2->Print("figs/hipo_rec_theta_phi_excl.png");
+    
     
     c2->cd(1); h_theta_phi_elec->Draw("COLZ");
     h_theta_phi_elec->GetXaxis()->SetTitle("phi [degree]");
@@ -1777,39 +1946,39 @@ int main(int argc, char** argv) {
     c2->cd(6); h_theta_mom_proton->Draw("COLZ");
     h_theta_mom_proton->GetXaxis()->SetTitle("p momentum [GeV]");
     h_theta_mom_proton->GetYaxis()->SetTitle("theta [degree]");
-    c2->Print("figs/theta_phi_mom.png");
+    c2->Print("figs/hipo_theta_phi_mom_excl.png");
     
     c2->cd(1);
-    h_rec_lu_neg->Draw();
-    h_rec_lu_neg->SetXTitle("lu");
-    h_rec_lu_neg->SetYTitle("counts");
+    h_rec_lu_pcal_elec->Draw();
+    h_rec_lu_pcal_elec->SetXTitle("lu");
+    //h_rec_lu_pcal_elec->SetYTitle("counts");
     c2->cd(2);
-    h_rec_lv_neg->Draw();
-    h_rec_lv_neg->SetXTitle("lv");
-    h_rec_lv_neg->SetYTitle("counts");
+    h_rec_lv_pcal_elec->Draw();
+    h_rec_lv_pcal_elec->SetXTitle("lv");
+    //h_rec_lv_pcal_elec->SetYTitle("counts");
     c2->cd(3);
-    h_rec_lw_neg->Draw();
-    h_rec_lw_neg->SetXTitle("lw");
-    h_rec_lw_neg->SetYTitle("counts");
+    h_rec_lw_pcal_elec->Draw();
+    h_rec_lw_pcal_elec->SetXTitle("lw");
+    //h_rec_lw_pcal_elec->SetYTitle("counts");
     c2->cd(4);
-    h_rec_lu_pos->Draw();
-    h_rec_lu_pos->SetXTitle("lu");
-    h_rec_lu_pos->SetYTitle("counts");
+    h_rec_lu_pcal_posit->Draw();
+    h_rec_lu_pcal_posit->SetXTitle("lu");
+    //h_rec_lu_pcal_posit->SetYTitle("counts");
     c2->cd(5);
-    h_rec_lv_pos->Draw();
-    h_rec_lv_pos->SetXTitle("lv");
-    h_rec_lv_pos->SetYTitle("counts");
+    h_rec_lv_pcal_posit->Draw();
+    h_rec_lv_pcal_posit->SetXTitle("lv");
+    //h_rec_lv_pcal_posit->SetYTitle("counts");
     c2->cd(6);
-    h_rec_lw_pos->Draw();
-    h_rec_lw_pos->SetXTitle("lw");
-    h_rec_lw_pos->SetYTitle("counts");
-    c2->Print("figs/lu_lv_lw.png");
+    h_rec_lw_pcal_posit->Draw();
+    h_rec_lw_pcal_posit->SetXTitle("lw");
+    //h_rec_lw_pcal_posit->SetYTitle("counts");
+    c2->Print("figs/hipo_lu_lv_lw_Pcal_ep_excl.png");
     
     
     c2->cd(1); h_rec_charge->Draw();
     h_rec_charge->SetXTitle("charge");
-    c2->cd(2); h_rec_pid->Draw();
-    h_rec_pid->SetXTitle("pid");
+    c2->cd(2); h_rec_sttime->Draw();
+    h_rec_sttime->SetXTitle("start time");
     c2->cd(3); h_rec_beta->Draw();
     h_rec_beta->SetXTitle("beta");
     c2->cd(4); h_rec_chi2pid_elec->Draw();
@@ -1818,23 +1987,155 @@ int main(int argc, char** argv) {
     h_rec_chi2pid_posit->SetXTitle("chi2pid");
     c2->cd(6); h_rec_chi2pid_proton->Draw();
     h_rec_chi2pid_proton->SetXTitle("chi2pid");
-    c2->Print("figs/Rec_particle.png");
+    c2->Print("figs/hipo_Rec_chi2pid_excl.png");
+    
+    
+    for(int kk=1; kk<7;++kk){
+        c2->cd(kk); h_rec_theta_electron[kk]->Draw();
+        h_rec_theta_electron[kk]->GetXaxis()->SetTitle("theta [degree]");
+        //h_rec_theta_electron[kk]->GetYaxis()->SetTitle("counts");
+    }
+    c2->cd(1);
+    TLatex t(0.02,0.95,"PID: 11");
+    t.SetNDC(kTRUE);
+    t.SetTextSize(0.08);
+    t.SetTextColor(kRed);
+    t.Draw("same");
+    c2->Print("figs/hipo_rec_theta_electron_sectors_excl.png");
+    
+    
+    for(int kkk=1; kkk<=6;++kkk){
+        c2->cd(kkk);
+        h_rec_theta_positron[kkk]->Draw();
+        h_rec_theta_positron[kkk]->GetXaxis()->SetTitle("theta [degree]");
+        //h_rec_theta_positron[kkk]->GetYaxis()->SetTitle("counts");
+    }
+    c2->cd(1);
+    TLatex t1(0.02,0.95,"PID: -11");
+    t1.SetNDC(kTRUE);
+    t1.SetTextSize(0.08);
+    t1.SetTextColor(kRed);
+    t1.Draw("same");
+    c2->Print("figs/hipo_rec_theta_positron_sectors_excl.png");
+    
+    
+    for(int kkkk=1; kkkk<=6;++kkkk){
+        c2->cd(kkkk);
+        h_rec_momentum_positron[kkkk]->Draw();
+        h_rec_momentum_positron[kkkk]->SetLineColor(kkkk);
+        h_rec_momentum_positron[kkkk]->GetXaxis()->SetTitle("mometum [GeV]");
+        //h_rec_momentum_positron[kkkk]->GetYaxis()->SetTitle("counts");
+    }
+    c2->cd(1);
+    t1.Draw("same");
+    c2->Print("figs/hipo_rec_momentum_positron_sectors_excl.png");
+    
+    
+    for(int kkkkk=1; kkkkk<=6;++kkkkk){
+        c2->cd(kkkkk); h_rec_momentum_electron[kkkkk]->Draw();
+        h_rec_momentum_electron[kkkkk]->GetXaxis()->SetTitle("momentum [GeV]");
+        h_rec_momentum_electron[kkkkk]->GetYaxis()->SetTitle("counts");
+    }
+    c2->cd(1);
+    t.Draw("same");
+    c2->Print("figs/hipo_rec_momentum_electron_sectors_excl.png");
+    
+    
+    for(int m=1; m<=6;++m){
+        c2->cd(m); h_sampling_frac_electron[m]->Draw();
+        h_sampling_frac_electron[m]->GetXaxis()->SetTitle("E_Cal/P");
+        //h_sampling_frac_electron[m]->GetYaxis()->SetTitle("counts");
+    }
+    c2->cd(1);
+    t.Draw("same");
+    c2->Print("figs/hipo_sampling_frac_electron_sectors_excl.png");
+    
+    
+    for(int mm=1; mm<=6;++mm){
+        c2->cd(mm); h_sampling_frac_positron[mm]->Draw();
+        h_sampling_frac_positron[mm]->GetXaxis()->SetTitle("E_Cal/P");
+        //h_sampling_frac_electron[mm]->GetYaxis()->SetTitle("counts");
+    }
+    c2->cd(1);
+    t1.Draw("same");
+    c2->Print("figs/hipo_sampling_frac_positron_sectors_excl.png");
+    
+    
+    for(int mmm=1; mmm<=6;++mmm){
+        c2->cd(mmm); sampling_vs_P_electron[mmm]->Draw("COLZ");
+        sampling_vs_P_electron[mmm]->GetXaxis()->SetTitle("P [GeV]");
+        sampling_vs_P_electron[mmm]->GetYaxis()->SetTitle("Sampling frac.");
+    }
+    c2->cd(1);
+    t.Draw("same");
+    c2->Print("figs/hipo_sampling_frac_vs_P_electron_sectors_excl.png");
+    
+    
+    for(int mmmm=1; mmmm<=6;++mmmm){
+        c2->cd(mmmm); sampling_vs_P_positron[mmmm]->Draw("COLZ");
+        sampling_vs_P_positron[mmmm]->GetXaxis()->SetTitle("P [GeV]");
+        sampling_vs_P_positron[mmmm]->GetYaxis()->SetTitle("Sampling frac.");
+    }
+    c2->cd(1);
+    t1.Draw("same");
+    c2->Print("figs/hipo_sampling_frac_vs_P_positron_sectors_excl.png");
+    
     
     
     c3->Divide(2,2);
+    
+    THStack *theta_elec=new THStack("theta_elec","e- Theta");
+    THStack *theta_posit=new THStack("theta_posit","e+ Theta");
+    THStack *momentum_elec=new THStack("momentum_elec","e- momentum");
+    THStack *momentum_posit=new THStack("momentum_posit","e+ momentum");
+    
+    for(int aa=1; aa<7;++aa){
+        h_rec_theta_electron[aa]->Draw();
+        h_rec_theta_electron[aa]->SetLineColor(aa);
+        theta_elec->Add(h_rec_theta_electron[aa]);
+        
+        h_rec_theta_positron[aa]->Draw();
+        h_rec_theta_positron[aa]->SetLineColor(aa);
+        theta_posit->Add(h_rec_theta_positron[aa]);
+        
+        h_rec_momentum_positron[aa]->Draw();
+        h_rec_momentum_positron[aa]->SetLineColor(aa);
+        momentum_posit->Add(h_rec_momentum_positron[aa]);
+        
+        h_rec_momentum_electron[aa]->Draw();
+        h_rec_momentum_electron[aa]->SetLineColor(aa);
+        momentum_elec->Add(h_rec_momentum_electron[aa]);
+    }
+    c3->cd(1); theta_elec->Draw("nostack");
+    theta_elec->GetXaxis()->SetTitle("theta [degree]");
+    gPad->BuildLegend(0.71,0.71,0.9,0.9,"");
+    c3->cd(2); theta_posit->Draw("nostack");
+    theta_posit->GetXaxis()->SetTitle("theta [degree]");
+    gPad->BuildLegend(0.71,0.71,0.9,0.9,"");
+    c3->cd(3); momentum_elec->Draw("nostack");
+    momentum_elec->GetXaxis()->SetTitle("momentum [GeV]");
+    gPad->BuildLegend(0.71,0.71,0.9,0.9,"");
+    c3->cd(4); momentum_posit->Draw("nostack");
+    momentum_posit->GetXaxis()->SetTitle("momentum [GeV]");
+    gPad->BuildLegend(0.71,0.71,0.9,0.9,"");
+    c3->Print("figs/hipo_rec_sectors_excl.png");
+    
+    /*
+    //c3->Divide(2,2);
     c3->cd(1); h_elec_sampl_frac->Draw();
     h_elec_sampl_frac->GetXaxis()->SetTitle("e- E_Cal/P");
-    h_elec_sampl_frac->GetYaxis()->SetTitle("counts");
+    //h_elec_sampl_frac->GetYaxis()->SetTitle("counts");
     c3->cd(2); h_posit_sampl_frac->Draw();
     h_posit_sampl_frac->GetXaxis()->SetTitle("e+ E_Cal/P");
-    h_posit_sampl_frac->GetYaxis()->SetTitle("counts");
+    //h_posit_sampl_frac->GetYaxis()->SetTitle("counts");
     c3->cd(3); h_elec_samplfrac_vs_P->Draw("COLZ");
     h_elec_samplfrac_vs_P->SetXTitle("e- P [GeV]");
     h_elec_samplfrac_vs_P->SetYTitle("sampl.frac");
     c3->cd(4); h_posit_samplfrac_vs_P->Draw("COLZ");
     h_posit_samplfrac_vs_P->SetXTitle("e+ P [GeV]");
     h_posit_samplfrac_vs_P->SetYTitle("sampl.frac");
-    c3->Print("figs/sampling_frac_&mom.png");
+    c3->Print("figs/hipo_sampling_frac_&mom.png");
+     */
     
     c3->cd(1);
     gPad->SetLogz();
@@ -1856,16 +2157,16 @@ int main(int argc, char** argv) {
     h_ECal_vs_Pcal_pos_particle->Draw("COLZ");
     h_ECal_vs_Pcal_pos_particle->SetXTitle("ECal [GeV]");
     h_ECal_vs_Pcal_pos_particle->SetYTitle("PCal [GeV]");
-    c3->Print("figs/ECin_ECout_Pcal.png");
+    c3->Print("figs/hipo_ECin_ECout_Pcal_excl.png");
     
     c3->cd(1);
-    h_rec_pcalXY_neg_particle->Draw("COLZ");
-    h_rec_pcalXY_neg_particle->SetXTitle("Cal hit-X position");
-    h_rec_pcalXY_neg_particle->SetYTitle("Cal hit-Y position");
+    h_rec_pcalXY_electron->Draw("COLZ");
+    h_rec_pcalXY_electron->SetXTitle("Cal hit-X position");
+    h_rec_pcalXY_electron->SetYTitle("Cal hit-Y position");
     c3->cd(2);
-    h_rec_pcalXY_pos_particle->Draw("COLZ");
-    h_rec_pcalXY_pos_particle->SetXTitle("Cal hit-X position");
-    h_rec_pcalXY_pos_particle->SetYTitle("Cal hit-Y position");
+    h_rec_pcalXY_positron->Draw("COLZ");
+    h_rec_pcalXY_positron->SetXTitle("Cal hit-X position");
+    h_rec_pcalXY_positron->SetYTitle("Cal hit-Y position");
     c3->cd(3);
     gPad->SetLogz();
     h_beta_vs_mom_neg_particle->Draw("COLZ");
@@ -1876,16 +2177,42 @@ int main(int argc, char** argv) {
     h_beta_vs_mom_pos_particle->Draw("COLZ");
     h_beta_vs_mom_pos_particle->SetXTitle("P [GeV]");
     h_beta_vs_mom_pos_particle->SetYTitle("beta");
-    c3->Print("figs/PCal_XY_betaP.png");
+    c3->Print("figs/hipo_PCal_ep_XY_betaP_excl.png");
    //----------------------------------------------------
-    
+   
+    out.close();
 }
-//###### ENF OF GENERATED FILE #######
+//###### ENF OF CODE FILE Main() #######
 
 
 //----------------------------------------
 //   Declaration of functions
 //----------------------------------------
+
+
+//function definition of the tcs event test (events with electron, positron and proton)
+void tcs_event_test(hipo32* branch_pid, bool &good_event){
+    bool electron_id=false;
+    bool positron_id=false;
+    bool proton_id=false;
+    auto num_particles= branch_pid->getLength();
+    
+    for(int nn=0; nn<num_particles;++nn){
+        auto id_value=branch_pid->getValue(nn);
+        if(id_value==11){
+            electron_id=true;
+        }else if(id_value==-11){
+            positron_id=true;
+        }else if(id_value==2212){
+            proton_id=true;
+        }else{}
+    }
+    //num_particles==3 implies ep->e'(pe-e+) exclusively
+    if(num_particles==3 && electron_id==1 && positron_id==1 && proton_id==1){
+        good_event=true;
+    }
+    return;
+}
 
 //function definition for the mapping (link different REC_branches)
 vectorMap loadMapIndex(hipo16* branch_pindex){
@@ -1900,13 +2227,16 @@ vectorMap loadMapIndex(hipo16* branch_pindex){
     return idxmap;
 }
 
-//funtion for calculating total cal_energy(PCal+ECin+ECout)
-void Calorimeter_bank(hipoF* cal_ener_branch,hipo8* cal_layer_branch,hipoF* cal_lu_branch,hipoF* cal_lv_branch,hipoF* cal_lw_branch,hipoF* cal_X_branch,hipoF* cal_Y_branch,hipoF* cal_Z_branch, vectorMap Cmap,int keyval, vector<float> &Cal_energy, vector<float> &lu, vector<float> &lv, vector<float> &lw, vector<float> &Xcal,vector<float> &Ycal,vector<float> &Zcal){
+//funtion for declaring the different parameters of Calorimeter
+void Calorimeter_bank(hipoF* cal_ener_branch,hipo8* cal_layer_branch,hipo8* cal_sector_branch,hipoF* cal_lu_branch,hipoF* cal_lv_branch,hipoF* cal_lw_branch,hipoF* cal_X_branch,hipoF* cal_Y_branch,hipoF* cal_Z_branch, vectorMap Cmap,int keyval, int& sector, vector<float> &Cal_energy, vector<float> &lu, vector<float> &lv, vector<float> &lw, vector<float> &Xcal,vector<float> &Ycal,vector<float> &Zcal){
     auto imap=Cmap.find(keyval);
-    if (imap !=Cmap.end()) {
+    sector=0;
+    if(imap !=Cmap.end()) {
         vector <int> inVect = (*imap).second;
         for (int ix=0; ix<inVect.size(); ix++){
             int mapCol=inVect[ix];
+            sector = cal_sector_branch->getValue(mapCol);
+            
             if(cal_layer_branch->getValue(mapCol)==1){
                 Cal_energy.push_back(cal_ener_branch->getValue(mapCol));
                 lu.push_back(cal_lu_branch->getValue(mapCol));
@@ -1933,6 +2263,42 @@ void Calorimeter_bank(hipoF* cal_ener_branch,hipo8* cal_layer_branch,hipoF* cal_
                 Zcal.push_back(cal_Z_branch->getValue(mapCol));
             }
         }
+    }
+    return;
+}
+
+
+void lepton_pair_frame(TLorentzVector e_in4vect, TLorentzVector p_in4vect, TLorentzVector elec_pr4vect, TLorentzVector pos_pr4vect, TLorentzVector p_pr4vect, double &phi){
+    
+    TLorentzVector e_mis4vect= e_in4vect+p_in4vect-elec_pr4vect-pos_pr4vect-p_pr4vect;
+    TLorentzVector photon4vect= elec_pr4vect+pos_pr4vect+p_pr4vect-p_in4vect;
+    TLorentzVector elpos_pr4vect= elec_pr4vect+pos_pr4vect;
+    
+    TLorentzVector pht_p_cm= photon4vect+p_in4vect;
+    
+    TLorentzVector p_in4vect_cm= p_in4vect;
+    p_in4vect_cm.Boost(- pht_p_cm.BoostVector());
+    TLorentzVector p_pr4vect_cm= p_pr4vect;
+    p_pr4vect_cm.Boost(- pht_p_cm.BoostVector());
+    TLorentzVector elec_pr4vect_cm=elec_pr4vect;
+    elec_pr4vect_cm.Boost(- pht_p_cm.BoostVector());
+    TLorentzVector pos_pr4vect_cm=pos_pr4vect;
+    pos_pr4vect_cm.Boost(- pht_p_cm.BoostVector());
+    
+    TLorentzVector elec_pr4vect_epcm= elec_pr4vect;
+    elec_pr4vect_epcm.Boost(- elpos_pr4vect.BoostVector());
+    TLorentzVector pos_pr4vect_epcm= pos_pr4vect;
+    pos_pr4vect_epcm.Boost(- elpos_pr4vect.BoostVector());
+    TLorentzVector p_pr4vect_epcm= p_pr4vect;
+    p_pr4vect_epcm.Boost(- elpos_pr4vect.BoostVector());
+    
+    TVector3 ele_pos_cross_cm= (pos_pr4vect_cm.Vect()).Cross(elec_pr4vect_cm.Vect());
+    TVector3 pp_cross_cm= (p_in4vect_cm.Vect()).Cross(p_pr4vect_cm.Vect());
+    
+    if(((elec_pr4vect_cm.Vect()).Dot(pp_cross_cm))>0){
+        phi= (ele_pos_cross_cm.Angle(pp_cross_cm))*TMath::RadToDeg();
+    }else{
+        phi = (TMath::TwoPi()-(ele_pos_cross_cm.Angle(pp_cross_cm)))*TMath::RadToDeg();
     }
     return;
 }
