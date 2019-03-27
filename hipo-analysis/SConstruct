@@ -12,8 +12,8 @@ env = Environment(CPPPATH=["include",".","/usr/include","/usr/local/include","/o
 env.Append(ENV = os.environ)
 env.Append(CPPPATH=["src/root","src/evio"])
 env.Append(CCFLAGS=['-std=c++11','`root-config --libs`',"-O2","-fPIC","-m64","-fmessage-length=0","-g"])
-env.Append(LIBPATH=["/opt/local/lib","/usr/lib","/usr/local/lib","/group/clas12/packages/lz4/lib","lib","/group/clas12/packages/hipo-io/lib", "/site/12gev_phys/2.2/Linux_CentOS7.2.1511-x86_64-gcc4.8.5/root/6.12.06/lib"])
-env.Append(CONFIGUREDIR=["/group/clas12/packages/lz4/lib","/group/clas12/packages/hipo-io/lib"])
+env.Append(LIBPATH=["/opt/local/lib","/usr/lib","/usr/local/lib","/group/clas12/packages-old/lz4/lib","lib","/group/clas12/packages-old/hipo-io/lib", "/site/12gev_phys/2.2/Linux_CentOS7.2.1511-x86_64-gcc4.8.5/root/6.12.06/lib"])
+env.Append(CONFIGUREDIR=["/group/clas12/packages-old/lz4/lib","/group/clas12/packages-old/hipo-io/lib"])
 #=================================================
 # Check for compression libraries.
 #=================================================
